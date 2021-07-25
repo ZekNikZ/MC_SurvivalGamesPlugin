@@ -68,9 +68,13 @@ public class GameManager extends Service implements IDataManager {
 
     private int gameState = -1; // 0 = pregame, 1 = ingame, 2 = deathmatch, 3 = deathmatch2, 4 = postgame
     private int currentStartPos = 0;
+    private boolean setup = false;
 
-    @Override
-    protected void setupService() {
+    private void setupTeams() {
+        if (this.setup) {
+            return;
+        }
+
         TeamService.getInstance().removeTeam("alive");
         TeamService.getInstance().removeTeam("spectator");
         TeamService.getInstance().newTeam("alive", "Alive", "ALIVE");
@@ -83,6 +87,11 @@ public class GameManager extends Service implements IDataManager {
         this.spectatorTeam.setColor(java.awt.Color.DARK_GRAY);
         this.plugin.getLogger().info("Done loading teams");
 
+        this.setup = true;
+    }
+
+    @Override
+    protected void setupService() {
         WorldSyncService.getInstance()
             .setGameRuleValue("doMobSpawning", "false")
             .setGameRuleValue("doWeatherCycle", "false")
@@ -136,6 +145,10 @@ public class GameManager extends Service implements IDataManager {
         Bukkit.getOnlinePlayers().forEach(player -> player.setAllowFlight(true));
         this.timer.stop();
 
+        Bukkit.broadcastMessage(ChatColor.GOLD + "========================");
+        Bukkit.broadcastMessage(ChatColor.GOLD + "           Game over!");
+        Bukkit.broadcastMessage(ChatColor.GOLD + "========================");
+
         Bukkit.broadcastMessage("Player Kills: ");
         this.kills.entrySet().stream()
             .sorted(Map.Entry.comparingByValue())
@@ -165,6 +178,7 @@ public class GameManager extends Service implements IDataManager {
             GameTeam team = TeamService.getInstance().getPlayerTeam(player);
             if (team == null) {
                 TeamService.getInstance().joinTeam(player, aliveTeam);
+                team = TeamService.getInstance().getPlayerTeam(player);
             }
             if (aliveTeam.equals(team)) {
                 player.setGameMode(GameMode.SURVIVAL);
@@ -172,11 +186,9 @@ public class GameManager extends Service implements IDataManager {
             } else if (spectatorTeam.equals(team)) {
                 player.setGameMode(GameMode.SPECTATOR);
             }
-            Bukkit.broadcastMessage(player.getName() + ": " + TeamService.getInstance().getPlayerTeam(player));
         }
 
         this.alivePlayerCount.setAndNotify(aliveCount);
-        Bukkit.broadcastMessage("updated players");
     }
 
     public void startGame() {
@@ -207,6 +219,7 @@ public class GameManager extends Service implements IDataManager {
 
     private void actuallyStartGame() {
         this.timer.start();
+        this.openedChests.clear();
         this.gameState = 1;
 
         Bukkit.getOnlinePlayers().forEach(player -> {
@@ -221,6 +234,7 @@ public class GameManager extends Service implements IDataManager {
 
         // No kill timer
         regionManager.getRegion("__global__").setFlag(DefaultFlag.PVP, StateFlag.State.DENY);
+        regionManager.getRegion("__global__").setFlag(DefaultFlag.CHEST_ACCESS, StateFlag.State.ALLOW);
         Bukkit.getScheduler().scheduleSyncDelayedTask(this.plugin, () -> {
             regionManager.getRegion("__global__").setFlag(DefaultFlag.PVP, StateFlag.State.ALLOW);
             Bukkit.broadcastMessage("" + ChatColor.GOLD + ChatColor.BOLD + "Grace period has ended! PVP enabled.");
@@ -312,7 +326,7 @@ public class GameManager extends Service implements IDataManager {
             mats.stream().limit(itemCount).collect(Collectors.toList());
 
         List<Integer> positions =
-            IntStream.range(0, 27).boxed().collect(Collectors.toList());
+            IntStream.range(0, chest.getInventory().getSize()).boxed().collect(Collectors.toList());
         Collections.shuffle(positions);
         List<Integer> chosenPositions =
             positions.stream().limit(itemCount).collect(Collectors.toList());
@@ -344,7 +358,7 @@ public class GameManager extends Service implements IDataManager {
             mats.stream().limit(itemCount).collect(Collectors.toList());
 
         List<Integer> positions =
-            IntStream.range(0, 27).boxed().collect(Collectors.toList());
+            IntStream.range(0, chest.getInventory().getSize()).boxed().collect(Collectors.toList());
         Collections.shuffle(positions);
         List<Integer> chosenPositions =
             positions.stream().limit(itemCount).collect(Collectors.toList());
@@ -371,6 +385,7 @@ public class GameManager extends Service implements IDataManager {
         this.map = map;
         Bukkit.broadcastMessage(ChatColor.GRAY + "Set map to " + map);
 
+        this.setupTeams();
         this.gameState = 0;
         this.currentStartPos = 0;
         Bukkit.getOnlinePlayers().forEach(this::setupPlayer);
@@ -381,6 +396,7 @@ public class GameManager extends Service implements IDataManager {
         player.setHealth(20);
         player.setFoodLevel(20);
         player.getInventory().clear();
+        player.getInventory().setArmorContents(new ItemStack[]{ null, null, null, null });
         player.setTotalExperience(0);
         player.setAllowFlight(false);
         TeamService.getInstance().joinTeam(player, aliveTeam);
@@ -463,8 +479,9 @@ public class GameManager extends Service implements IDataManager {
     @EventHandler
     private void onPlayerJoin(PlayerJoinEvent event) {
         if (gameState == 0) {
+//            this.setupTeams();
             this.setupPlayer(event.getPlayer());
-        } else {
+        } else if (gameState != -1){
             if (!this.alivePlayers.containsKey(event.getPlayer().getUniqueId())) {
                 TeamService.getInstance().joinTeam(event.getPlayer(), spectatorTeam);
             }
