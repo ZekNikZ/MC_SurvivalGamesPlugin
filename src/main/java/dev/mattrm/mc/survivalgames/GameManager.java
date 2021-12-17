@@ -49,8 +49,8 @@ import java.util.stream.IntStream;
 
 public class GameManager extends Service implements IDataManager {
     private static final int NO_KILL_TIME = 10;
-    private static final int CHEST_REFILL_TIME = 15; // 15
-    private static final int DEATHMATCH_TIME = 25; // 25
+    private static final int CHEST_REFILL_TIME = 10; // 15
+    private static final int DEATHMATCH_TIME = 15; // 25
 
     private static final GameManager INSTANCE = new GameManager();
 
